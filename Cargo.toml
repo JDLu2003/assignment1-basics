@@ -1,0 +1,10 @@
+[package]
+name = "assignment1-basics"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "_rust_ext"
+crate-type = ["cdylib"]
+
+[dependencies]
