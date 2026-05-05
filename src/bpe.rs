@@ -30,43 +30,39 @@ pub fn train_bpe(
             vocab.insert(idx, special_tokens[idx - 256].clone().into_bytes());
         }
     }
-    let mut special_token_map: HashMap<&str, usize> = HashMap::new();
-    for (i, st) in special_tokens.iter().enumerate() {
-        let token_str = st;
-        special_token_map.insert(token_str, 256 + i);
-    }
-
-    let escaped_special_tokens: Vec<String> = special_tokens
-        .iter()
-        .map(|s: &String| fancy_regex::escape(s).into_owned())
-        .collect();
-    let special_token_pattern: String = escaped_special_tokens.join("|");
 
     let base_pattern = r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+";
-    let final_pattern: String = if special_tokens.is_empty() {
-        base_pattern.to_string()
-    } else {
-        format!("(?:{})|{}", special_token_pattern, base_pattern)
-    };
-    let re = Regex::new(&final_pattern)
+    let re = Regex::new(base_pattern)
         .map_err(|e| PyValueError::new_err(format!("cannot convert regex in bpe.rs: {}", e)))?;
 
-    let content_split: Vec<&str> = re
-        .find_iter(&content_str)
-        .map(|m| m.unwrap().as_str())
-        .collect();
+    let mut spans: Vec<&str> = vec![&content_str];
+    for s_tok in &special_tokens {
+        let mut new_spans = Vec::new();
+        for sp in spans {
+            if !sp.is_empty() {
+                let splits: Vec<&str> = sp.split(s_tok.as_str()).collect();
+                new_spans.extend(splits);
+            }
+        }
+        spans = new_spans;
+    }
 
-    // let mut sequneces: Vec<Vec<usize>> = Vec::with_capacity(content_split.len());
     let mut sequences_counting: HashMap<Vec<usize>, usize> = HashMap::new();
 
-    for chunk in content_split {
-        if let Some(&token_id) = special_token_map.get(chunk) {
-            // sequneces.push(vec![token_id]);
-            sequences_counting.insert(vec![token_id], 1);
-        } else {
-            let byte_seq: Vec<usize> = chunk.as_bytes().iter().map(|&c| c as usize).collect();
-            // sequneces.push(byte_seq.clone());
-            sequences_counting.entry(byte_seq).and_modify(|c| *c += 1).or_insert(1);
+    for sp in spans {
+        if sp.is_empty() {
+            continue;
+        }
+        for m in re.find_iter(sp) {
+            let piece = m.unwrap().as_str();
+            if piece.is_empty() {
+                continue;
+            }
+            let byte_seq: Vec<usize> = piece.as_bytes().iter().map(|&c| c as usize).collect();
+            sequences_counting
+                .entry(byte_seq)
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
         }
     }
 
@@ -82,7 +78,10 @@ pub fn train_bpe(
             }
             for window in sequence.windows(2) {
                 let pair: (usize, usize) = (window[0], window[1]);
-                pair_counts.entry(pair).and_modify(|p| *p += count).or_insert(*count);
+                pair_counts
+                    .entry(pair)
+                    .and_modify(|p| *p += count)
+                    .or_insert(*count);
             }
         }
         if pair_counts.is_empty() {
@@ -139,7 +138,10 @@ pub fn train_bpe(
                     i += 1;
                 }
             }
-            sequences_counting_new.entry(new_seqence).and_modify(|c| *c += *count).or_insert(*count);
+            sequences_counting_new
+                .entry(new_seqence)
+                .and_modify(|c| *c += *count)
+                .or_insert(*count);
         }
         sequences_counting = sequences_counting_new;
         next_id += 1;
