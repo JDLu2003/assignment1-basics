@@ -201,7 +201,7 @@ impl BPETokenizer {
 /// 生成 chunks
 /// 对于 <special_token> test1 <special_token> text2 <special_token>
 /// 生成 "", "<special_token>", "test1", "<special_token>", "text2", "<special_token>", ""
-/// 欧式是普通的文本
+/// 偶数是普通的文本
 fn build_chunks<'a>(content_str: &'a str, ac: &'a AhoCorasick) -> Vec<&'a str> {
     let mut chunks: Vec<&'a str> = Vec::new();
 
