@@ -2,8 +2,16 @@ use core::panic;
 use std::{collections::HashMap, vec};
 
 use aho_corasick::AhoCorasick;
-use pyo3::prelude::*;
+use fancy_regex::Regex;
+use pyo3::{exceptions::PyValueError, prelude::*};
 
+macro_rules! println_special {
+    ($($arg:tt)*) => {
+        println!("###########");
+        println!($($arg)*);
+        println!("###########");
+    };
+}
 #[pyclass]
 pub struct BPETokenizer {
     vocab: HashMap<i32, Vec<u8>>,
@@ -60,10 +68,6 @@ impl BPETokenizer {
         let content_str = String::from_utf8_lossy(text.as_bytes()).replace('\u{FFFD}', "");
         let ac = AhoCorasick::new(self.special_tokens.clone()).unwrap();
         let chunks = build_chunks(&content_str, &ac);
-        let mut chunks_bytes: Vec<Vec<u8>> = chunks
-            .iter()
-            .map(|chunk| chunk.as_bytes().to_vec())
-            .collect();
 
         let mut special_token_map_reverse: HashMap<Vec<u8>, i32> = HashMap::new();
         for st in &self.special_tokens {
@@ -86,68 +90,87 @@ impl BPETokenizer {
 
         let mut res_buckets: Vec<Vec<i32>> = Vec::new();
 
-        let convert_text = |chunk: &mut Vec<u8>| -> Vec<i32> {
+        let convert_text = |chunk: &str| -> Result<Vec<i32>, fancy_regex::Error> {
             if chunk.is_empty() {
-                return Vec::new();
+                return Ok(Vec::new());
             }
-            let mut seq: Vec<Vec<u8>> = chunk.iter().map(|&b| vec![b]).collect();
-            loop {
-                let best_pair_idx = seq
-                    .windows(2)
-                    .enumerate()
-                    .filter_map(|(i, w)| {
-                        merge_map
-                            .get(&(w[0].clone(), w[1].clone()))
-                            .map(|&rank| (i, rank))
-                    })
-                    .min_by_key(|&(_, rank)| rank)
-                    .map(|(i, _)| i);
+            let mut chunk_i32: Vec<i32> = Vec::new();
+            let pattern =
+                r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+";
+            let re = Regex::new(pattern)?;
+            for word in re.find_iter(chunk) {
+                let word = word.unwrap().as_str().as_bytes().to_vec();
+                let mut seq: Vec<Vec<u8>> = word.iter().map(|&b| vec![b]).collect();
+                loop {
+                    let best_pair_idx = seq
+                        .windows(2)
+                        .enumerate()
+                        .filter_map(|(i, w)| {
+                            merge_map
+                                .get(&(w[0].clone(), w[1].clone()))
+                                .map(|&rank| (i, rank))
+                        })
+                        .min_by_key(|&(_, rank)| rank)
+                        .map(|(i, _)| i);
 
-                if let Some(best_i) = best_pair_idx {
-                    let mut new_seq = Vec::with_capacity(seq.len() - 1);
-                    let mut i = 0;
-                    while i < seq.len() {
-                        if i == best_i {
-                            let mut merged = seq[i].clone();
-                            merged.extend(&seq[i + 1]);
-                            new_seq.push(merged);
-                            i += 2;
-                        } else {
-                            new_seq.push(seq[i].clone());
-                            i += 1;
+                    if let Some(best_i) = best_pair_idx {
+                        let mut new_seq = Vec::with_capacity(seq.len() - 1);
+                        let mut i = 0;
+                        while i < seq.len() {
+                            if i == best_i {
+                                let mut merged = seq[i].clone();
+                                merged.extend(&seq[i + 1]);
+                                new_seq.push(merged);
+                                i += 2;
+                            } else {
+                                new_seq.push(seq[i].clone());
+                                i += 1;
+                            }
                         }
+                        seq = new_seq;
+                    } else {
+                        break;
                     }
-                    seq = new_seq;
-                } else {
-                    break;
+                }
+                for token_byte in seq {
+                    let token_id = vocab_reverse
+                        .get(&token_byte)
+                        .expect("Token not found in vocab!");
+                    chunk_i32.push(*token_id);
                 }
             }
-            let mut chunk_i32: Vec<i32> = Vec::with_capacity(seq.len());
-            for token_byte in seq {
-                let token_id = vocab_reverse
-                    .get(&token_byte)
-                    .expect("Token not found in vocab!");
-                chunk_i32.push(*token_id);
-            }
-            chunk_i32
+
+            Ok(chunk_i32)
         };
 
-        for (idx, chunk) in &mut chunks_bytes.iter_mut().enumerate() {
+        for (idx, chunk) in chunks.iter().enumerate() {
             if idx % 2 == 0 {
                 // 偶数是普通的文本
-                let chunk_i32 = convert_text(chunk);
+                let chunk_i32 = convert_text(chunk).map_err(|_| PyValueError::new_err(""))?;
                 res_buckets.push(chunk_i32);
             } else {
                 // 奇数是 special token
                 let new_chunk: Vec<u8> = Vec::with_capacity(1);
-                let token = special_token_map_reverse.get(chunk).expect(
+                let token = special_token_map_reverse.get(chunk.as_bytes()).expect(
                     format!("cannot find special token in hashmap: {:?}", new_chunk).as_str(),
                 );
                 res_buckets.push(vec![*token]);
             }
         }
-
-        Ok(res_buckets.concat())
+        let res = res_buckets.concat();
+        #[cfg(debug_assertions)]
+        {
+            println!("input is:");
+            println_special!("{}", text);
+            println!("ouput is:");
+            println_special!("{:?}", res);
+            println!("decode is:");
+            println_special!(
+                "{}",
+                self.decode(res.clone()).expect("error to decode in debug")
+            );
+        }
+        Ok(res)
     }
     fn decode(&self, ids: Vec<i32>) -> PyResult<String> {
         let mut bytes_str: Vec<u8> = Vec::new();
@@ -167,7 +190,10 @@ impl BPETokenizer {
         for item in iterable.try_iter()? {
             let item = item?;
             let text: &str = item.extract()?;
-            all_ids.extend(self.encode(text).expect(format!("cannot convert text:{}", text).as_str()));
+            all_ids.extend(
+                self.encode(text)
+                    .expect(format!("cannot convert text:{}", text).as_str()),
+            );
         }
         Ok(all_ids)
     }
