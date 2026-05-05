@@ -1,5 +1,5 @@
 use fancy_regex::Regex;
-use std::{collections::HashSet, fs};
+use std::fs;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::collections::HashMap;
@@ -10,10 +10,14 @@ pub fn train_bpe(
     vocab_size: usize,
     special_tokens: Vec<String>,
 ) -> PyResult<(HashMap<usize, Vec<u8>>, Vec<(Vec<u8>, Vec<u8>)>)> {
-    println!(
-        "innput file: {}\nvocab_size: {}\nspecial_tokens: {:?}",
-        input_path, vocab_size, special_tokens
-    );
+    #[cfg(debug_assertions)]
+    {
+        println!(
+            "[rust] innput file: {}\nvocab_size: {}\nspecial_tokens: {:?}",
+            input_path, vocab_size, special_tokens
+        );
+    }
+    let _start = std::time::Instant::now();
     let file_bytes: Vec<u8> = fs::read(input_path).expect("can not read file from input_path");
     let content_str = String::from_utf8_lossy(&file_bytes).replace('\u{FFFD}', "");
 
@@ -134,6 +138,11 @@ pub fn train_bpe(
         }
         next_id += 1;
     }
-    println!("vocab.len: {}", vocab.len());
+    #[cfg(debug_assertions)]
+    {
+        println!("[rust] vocab.len: {}", vocab.len());
+        let duration = _start.elapsed();
+        println!("[rust] bpe_train duration: {:?}", duration);
+    }
     Ok((vocab, merges))
 }
