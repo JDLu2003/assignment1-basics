@@ -7,6 +7,10 @@ ifneq (,$(findstring r,$(MAKEFLAGS)))
 	CLEAN_FOR_RUST_RELEASE := so_clean
 endif
 
+ifdef v
+	FULL_DIFF := -vv
+endif
+
 ifdef TS
 	TEST_SUFFIX := /test_$(TS).py$(if $(FUNC),::$(FUNC))
 endif
@@ -17,6 +21,7 @@ help:
 	@echo "  make clean"
 	@echo "  -p: profile the tests using samply"
 	@echo "  -r: build the Rust extension in release mode"
+	@echo "  -d: show full diff"
 
 clean: so_clean rust_clean
 
@@ -30,6 +35,6 @@ rust_build: $(CLEAN_FOR_RUST_RELEASE)
 	maturin develop $(RUST_MODE)
 
 test: rust_build
-	$(PROFILE) uv run pytest tests$(TEST_SUFFIX) -s
+	$(PROFILE) uv run pytest tests$(TEST_SUFFIX) $(FULL_DIFF)
 
 .PHONY: clean rust_clean rust_build test
