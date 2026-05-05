@@ -66,7 +66,7 @@ impl BPETokenizer {
     }
     fn encode(&self, text: &str) -> PyResult<Vec<i32>> {
         let content_str = String::from_utf8_lossy(text.as_bytes()).replace('\u{FFFD}', "");
-        let ac = AhoCorasick::new(self.special_tokens.clone()).unwrap();
+        let ac = AhoCorasick::builder().match_kind(aho_corasick::MatchKind::LeftmostLongest).build(self.special_tokens.clone()).unwrap();
         let chunks = build_chunks(&content_str, &ac);
 
         let mut special_token_map_reverse: HashMap<Vec<u8>, i32> = HashMap::new();
