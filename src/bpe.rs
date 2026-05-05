@@ -1,6 +1,6 @@
+use aho_corasick::AhoCorasick;
 use fancy_regex::Regex;
 use std::fs;
-use aho_corasick::AhoCorasick;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::collections::HashMap;
@@ -154,17 +154,17 @@ fn remove_special_tokens<'a>(content_str: &'a str, ac: &AhoCorasick) -> Vec<&'a 
     for mat in ac.find_iter(content_str) {
         let start: usize = mat.start();
         let end: usize = mat.end();
-        
+
         if start > last_end {
             spans.push(&content_str[last_end..start]);
         }
         // 如果需要保留特殊 token 本身，可以在这里处理
         last_end = end;
     }
-    
+
     if last_end < content_str.len() {
         spans.push(&content_str[last_end..]);
     }
-    
+
     spans
 }
