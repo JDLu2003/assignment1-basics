@@ -1,7 +1,9 @@
 mod bpe;
+mod tokenizer;
 
 use bpe::*;
 use pyo3::prelude::*;
+use tokenizer::*;
 
 #[pyfunction]
 pub fn add(left: u64, right: u64) -> u64 {
@@ -12,6 +14,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 fn _rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(add, m)?)?;
     m.add_function(wrap_pyfunction!(train_bpe, m)?)?;
+    m.add_class::<BPETokenizer>()?;
     Ok(())
 }
 
