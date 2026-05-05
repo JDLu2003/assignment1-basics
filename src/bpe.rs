@@ -1,5 +1,6 @@
 use fancy_regex::Regex;
 use std::fs;
+use aho_corasick::AhoCorasick;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::collections::HashMap;
@@ -35,17 +36,8 @@ pub fn train_bpe(
     let re = Regex::new(base_pattern)
         .map_err(|e| PyValueError::new_err(format!("cannot convert regex in bpe.rs: {}", e)))?;
 
-    let mut spans: Vec<&str> = vec![&content_str];
-    for s_tok in &special_tokens {
-        let mut new_spans = Vec::new();
-        for sp in spans {
-            if !sp.is_empty() {
-                let splits: Vec<&str> = sp.split(s_tok.as_str()).collect();
-                new_spans.extend(splits);
-            }
-        }
-        spans = new_spans;
-    }
+    let ac = AhoCorasick::new(special_tokens.clone()).unwrap();
+    let spans: Vec<&str> = remove_special_tokens(&content_str, &ac);
 
     let mut sequences_counting: HashMap<Vec<usize>, usize> = HashMap::new();
 
@@ -153,4 +145,26 @@ pub fn train_bpe(
         println!("[rust] bpe_train duration: {:?}", duration);
     }
     Ok((vocab, merges))
+}
+
+fn remove_special_tokens<'a>(content_str: &'a str, ac: &AhoCorasick) -> Vec<&'a str> {
+    let mut spans: Vec<&'a str> = Vec::new();
+    let mut last_end: usize = 0;
+
+    for mat in ac.find_iter(content_str) {
+        let start: usize = mat.start();
+        let end: usize = mat.end();
+        
+        if start > last_end {
+            spans.push(&content_str[last_end..start]);
+        }
+        // 如果需要保留特殊 token 本身，可以在这里处理
+        last_end = end;
+    }
+    
+    if last_end < content_str.len() {
+        spans.push(&content_str[last_end..]);
+    }
+    
+    spans
 }

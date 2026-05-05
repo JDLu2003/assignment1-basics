@@ -15,6 +15,7 @@ dependencies = [
 name = "assignment1-basics"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "fancy-regex",
  "pyo3",
 ]
