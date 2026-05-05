@@ -56,14 +56,17 @@ pub fn train_bpe(
         .map(|m| m.unwrap().as_str())
         .collect();
 
-    let mut sequneces: Vec<Vec<usize>> = Vec::with_capacity(content_split.len());
+    // let mut sequneces: Vec<Vec<usize>> = Vec::with_capacity(content_split.len());
+    let mut sequences_counting: HashMap<Vec<usize>, usize> = HashMap::new();
 
     for chunk in content_split {
         if let Some(&token_id) = special_token_map.get(chunk) {
-            sequneces.push(vec![token_id]);
+            // sequneces.push(vec![token_id]);
+            sequences_counting.insert(vec![token_id], 1);
         } else {
             let byte_seq: Vec<usize> = chunk.as_bytes().iter().map(|&c| c as usize).collect();
-            sequneces.push(byte_seq);
+            // sequneces.push(byte_seq.clone());
+            sequences_counting.entry(byte_seq).and_modify(|c| *c += 1).or_insert(1);
         }
     }
 
@@ -73,13 +76,13 @@ pub fn train_bpe(
     while vocab.len() < vocab_size {
         let mut pair_counts: HashMap<(usize, usize), usize> = HashMap::new();
 
-        for sequence in &sequneces {
+        for (sequence, count) in &sequences_counting {
             if sequence.len() < 2 {
                 continue;
             }
             for window in sequence.windows(2) {
                 let pair: (usize, usize) = (window[0], window[1]);
-                pair_counts.entry(pair).and_modify(|p| *p += 1).or_insert(1);
+                pair_counts.entry(pair).and_modify(|p| *p += count).or_insert(*count);
             }
         }
         if pair_counts.is_empty() {
@@ -119,7 +122,9 @@ pub fn train_bpe(
         vocab.insert(next_id, new_bytes);
         merges.push((bytes_left, bytes_right));
 
-        for seqence in &mut sequneces {
+        let mut sequences_counting_new: HashMap<Vec<usize>, usize> = HashMap::new();
+
+        for (seqence, count) in &mut sequences_counting {
             let mut new_seqence: Vec<usize> = Vec::with_capacity(seqence.len());
             let mut i: usize = 0;
             while i < seqence.len() {
@@ -134,8 +139,9 @@ pub fn train_bpe(
                     i += 1;
                 }
             }
-            *seqence = new_seqence;
+            sequences_counting_new.entry(new_seqence).and_modify(|c| *c += *count).or_insert(*count);
         }
+        sequences_counting = sequences_counting_new;
         next_id += 1;
     }
     #[cfg(debug_assertions)]
