@@ -167,3 +167,6 @@ cython_debug/
 /target
 
 /logs
+
+# samply output 
+profile.json.gz
