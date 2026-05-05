@@ -1,4 +1,4 @@
-ifeq ($(MAKEFLAGS), -p)
+ifneq (,$(findstring p,$(MAKEFLAGS)))
 	PROFILE := sample record 
 endif
 
