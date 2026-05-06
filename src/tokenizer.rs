@@ -5,6 +5,7 @@ use aho_corasick::AhoCorasick;
 use fancy_regex::Regex;
 use indicatif::{ProgressBar, ProgressStyle};
 use pyo3::{exceptions::PyValueError, prelude::*};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 macro_rules! println_special {
     ($($arg:tt)*) => {
@@ -66,12 +67,16 @@ impl BPETokenizer {
         }
     }
     fn encode(&self, text: &str) -> PyResult<Vec<i32>> {
+        println!("");
         let content_str = String::from_utf8_lossy(text.as_bytes()).replace('\u{FFFD}', "");
         let ac = AhoCorasick::builder()
             .match_kind(aho_corasick::MatchKind::LeftmostLongest)
             .build(self.special_tokens.clone())
             .unwrap();
         let chunks = build_chunks(&content_str, &ac);
+
+        let pattern = r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+";
+        let re = Regex::new(pattern).expect("cannot convert pattern to Regex");
 
         let mut special_token_map_reverse: HashMap<Vec<u8>, i32> = HashMap::new();
         for st in &self.special_tokens {
@@ -92,16 +97,11 @@ impl BPETokenizer {
             merge_map.insert(pair.clone(), idx);
         }
 
-        let mut res_buckets: Vec<Vec<i32>> = Vec::new();
-
         let convert_text = |chunk: &str| -> Result<Vec<i32>, fancy_regex::Error> {
             if chunk.is_empty() {
                 return Ok(Vec::new());
             }
             let mut chunk_i32: Vec<i32> = Vec::new();
-            let pattern =
-                r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+";
-            let re = Regex::new(pattern)?;
             for word in re.find_iter(chunk) {
                 let word = word.unwrap().as_str().as_bytes().to_vec();
                 let mut seq: Vec<Vec<u8>> = word.iter().map(|&b| vec![b]).collect();
@@ -150,27 +150,30 @@ impl BPETokenizer {
         let pb = ProgressBar::new(chunks.len() as u64);
         pb.set_style(
             ProgressStyle::with_template(
-                "[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {per_sec} ({eta}) {msg}",
+                "[{elapsed_precise}] {bar:60.cyan/blue} {pos}/{len} {per_sec} ({eta}) {msg}",
             )
             .unwrap()
             .progress_chars("##-"),
         );
-        for (idx, chunk) in chunks.iter().enumerate() {
-            if idx % 2 == 0 {
-                // 偶数是普通的文本
-                let chunk_i32 = convert_text(chunk).map_err(|_| PyValueError::new_err(""))?;
-                res_buckets.push(chunk_i32);
-            } else {
-                // 奇数是 special token
-                let new_chunk: Vec<u8> = Vec::with_capacity(1);
-                let token = special_token_map_reverse.get(chunk.as_bytes()).expect(
-                    format!("cannot find special token in hashmap: {:?}", new_chunk).as_str(),
-                );
-                res_buckets.push(vec![*token]);
-            }
-            pb.set_position(idx as u64);
-        }
-        let res = res_buckets.concat();
+
+        let res_buckets: Result<Vec<Vec<i32>>, PyErr> = chunks
+            .par_iter()
+            .enumerate()
+            .map(|(idx, chunk)| {
+                let result = if idx % 2 == 0 {
+                    convert_text(chunk).map_err(|_| PyValueError::new_err("Encode error"))
+                } else {
+                    let token = special_token_map_reverse
+                        .get(chunk.as_bytes())
+                        .ok_or_else(|| PyValueError::new_err("Special token not found"))?;
+                    Ok(vec![*token])
+                };
+                pb.inc(1);
+                result
+            })
+            .collect();
+
+        let res = res_buckets.unwrap_or_default().concat();
         #[cfg(debug_assertions)]
         {
             println!("input is:");
