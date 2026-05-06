@@ -1,5 +1,9 @@
 use core::panic;
-use std::{collections::HashMap, vec};
+use std::{
+    collections::HashMap,
+    sync::{Arc, atomic::AtomicBool},
+    vec,
+};
 
 use aho_corasick::AhoCorasick;
 use fancy_regex::Regex;
@@ -66,8 +70,17 @@ impl BPETokenizer {
             special_tokens: special_tokens.unwrap_or_default(),
         }
     }
+
     fn encode(&self, text: &str) -> PyResult<Vec<i32>> {
         println!("");
+
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
+        let _ = ctrlc::set_handler(move || {
+            r.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+        let is_inter = AtomicBool::new(false);
+
         let content_str = String::from_utf8_lossy(text.as_bytes()).replace('\u{FFFD}', "");
         let ac = AhoCorasick::builder()
             .match_kind(aho_corasick::MatchKind::LeftmostLongest)
@@ -100,6 +113,16 @@ impl BPETokenizer {
         let convert_text = |chunk: &str| -> Result<Vec<i32>, fancy_regex::Error> {
             if chunk.is_empty() {
                 return Ok(Vec::new());
+            }
+            if !running.load(std::sync::atomic::Ordering::Relaxed) {
+                if is_inter.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Err(fancy_regex::Error::RuntimeError(
+                        fancy_regex::RuntimeError::BacktrackLimitExceeded,
+                    ));
+                } else {
+                    is_inter.store(true, std::sync::atomic::Ordering::SeqCst);
+                    panic!("interrupt by signal");
+                }
             }
             let mut chunk_i32: Vec<i32> = Vec::new();
             for word in re.find_iter(chunk) {
