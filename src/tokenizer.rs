@@ -3,6 +3,7 @@ use std::{collections::HashMap, vec};
 
 use aho_corasick::AhoCorasick;
 use fancy_regex::Regex;
+use indicatif::{ProgressBar, ProgressStyle};
 use pyo3::{exceptions::PyValueError, prelude::*};
 
 macro_rules! println_special {
@@ -66,7 +67,10 @@ impl BPETokenizer {
     }
     fn encode(&self, text: &str) -> PyResult<Vec<i32>> {
         let content_str = String::from_utf8_lossy(text.as_bytes()).replace('\u{FFFD}', "");
-        let ac = AhoCorasick::builder().match_kind(aho_corasick::MatchKind::LeftmostLongest).build(self.special_tokens.clone()).unwrap();
+        let ac = AhoCorasick::builder()
+            .match_kind(aho_corasick::MatchKind::LeftmostLongest)
+            .build(self.special_tokens.clone())
+            .unwrap();
         let chunks = build_chunks(&content_str, &ac);
 
         let mut special_token_map_reverse: HashMap<Vec<u8>, i32> = HashMap::new();
@@ -143,6 +147,14 @@ impl BPETokenizer {
             Ok(chunk_i32)
         };
 
+        let pb = ProgressBar::new(chunks.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {per_sec} ({eta}) {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
         for (idx, chunk) in chunks.iter().enumerate() {
             if idx % 2 == 0 {
                 // 偶数是普通的文本
@@ -156,6 +168,7 @@ impl BPETokenizer {
                 );
                 res_buckets.push(vec![*token]);
             }
+            pb.set_position(idx as u64);
         }
         let res = res_buckets.concat();
         #[cfg(debug_assertions)]
@@ -170,6 +183,7 @@ impl BPETokenizer {
                 self.decode(res.clone()).expect("error to decode in debug")
             );
         }
+        pb.finish_with_message("encode finished");
         Ok(res)
     }
     fn decode(&self, ids: Vec<i32>) -> PyResult<String> {

@@ -26,7 +26,7 @@ help:
 clean: so_clean rust_clean
 
 so_clean:
-	rm cs336_basics/_rust_ext.*.so
+	rm -rf cs336_basics/_rust_ext.*.so
 
 rust_clean:
 	cargo clean

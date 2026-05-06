@@ -170,3 +170,6 @@ cython_debug/
 
 # samply output 
 profile.json.gz
+
+# dataset
+/data

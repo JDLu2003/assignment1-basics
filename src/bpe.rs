@@ -1,5 +1,6 @@
 use aho_corasick::AhoCorasick;
 use fancy_regex::Regex;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -61,7 +62,17 @@ pub fn train_bpe(
     let mut merges: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     let mut next_id: usize = 256 + special_tokens.len();
 
+    let pb: ProgressBar = ProgressBar::new(vocab_size as u64);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {per_sec} ({eta}) {msg}",
+        )
+        .unwrap()
+        .progress_chars("##-"),
+    );
+
     while vocab.len() < vocab_size {
+        pb.set_position(vocab.len() as u64);
         let mut pair_counts: HashMap<(usize, usize), usize> = HashMap::new();
 
         for (sequence, count) in &sequences_counting {
@@ -144,6 +155,7 @@ pub fn train_bpe(
         let duration = _start.elapsed();
         println!("[rust] bpe_train duration: {:?}", duration);
     }
+    pb.finish_with_message("bpe train finished");
     Ok((vocab, merges))
 }
 
