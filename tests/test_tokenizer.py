@@ -84,6 +84,15 @@ def test_roundtrip_empty():
     decoded_string = tokenizer.decode(encoded_ids)
     assert test_string == decoded_string
 
+def test_roundtrip_special_char():
+    tokenizer = get_tokenizer_from_vocab_merges_path(
+        vocab_path=VOCAB_PATH,
+        merges_path=MERGES_PATH,
+    )
+    test_string = "in a little voice.�\nBut there was no o"
+    encoded_ids = tokenizer.encode(test_string)
+    decoded_string = tokenizer.decode(encoded_ids)
+    assert test_string == decoded_string
 
 def test_empty_matches_tiktoken():
     reference_tokenizer = tiktoken.get_encoding("gpt2")
