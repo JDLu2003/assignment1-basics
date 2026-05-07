@@ -6,13 +6,15 @@ use std::fs;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::collections::HashMap;
 
+type Vocab = HashMap<usize, Vec<u8>>;
+type Merges = Vec<(Vec<u8>, Vec<u8>)>;
+
 #[pyfunction]
 pub fn train_bpe(
     input_path: String,
     vocab_size: usize,
     special_tokens: Vec<String>,
-) -> PyResult<(HashMap<usize, Vec<u8>>, Vec<(Vec<u8>, Vec<u8>)>)> {
-    println!("");
+) -> PyResult<(Vocab, Merges)> {
     #[cfg(debug_assertions)]
     {
         println!(
@@ -112,7 +114,7 @@ pub fn train_bpe(
             )
             .unwrap();
 
-        if best_count <= 0 {
+        if best_count == 0 {
             break;
         }
 

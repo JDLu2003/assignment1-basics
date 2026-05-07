@@ -72,7 +72,6 @@ impl BPETokenizer {
     }
 
     fn encode(&self, text: &str) -> PyResult<Vec<i32>> {
-        println!("");
 
         let running = Arc::new(AtomicBool::new(true));
         let r = running.clone();
@@ -96,8 +95,8 @@ impl BPETokenizer {
             let (key, value) = self
                 .vocab
                 .iter()
-                .find(|(_, v)| *v == &st.as_bytes())
-                .expect(format!("cannot find special_token in vocab: {}", st).as_str());
+                .find(|(_, v)| *v == st.as_bytes())
+                .unwrap_or_else(|| panic!("cannot find special_token in vocab: {}", st));
             special_token_map_reverse.insert(value.to_vec(), *key);
         }
         let mut vocab_reverse: HashMap<Vec<u8>, i32> = HashMap::new();
@@ -110,15 +109,15 @@ impl BPETokenizer {
             merge_map.insert(pair.clone(), idx);
         }
 
-        let convert_text = |chunk: &str| -> Result<Vec<i32>, fancy_regex::Error> {
+        let convert_text = |chunk: &str| -> Result<Vec<i32>, Box<fancy_regex::Error>> {
             if chunk.is_empty() {
                 return Ok(Vec::new());
             }
             if !running.load(std::sync::atomic::Ordering::Relaxed) {
                 if is_inter.load(std::sync::atomic::Ordering::Relaxed) {
-                    return Err(fancy_regex::Error::RuntimeError(
+                    return Err(Box::new(fancy_regex::Error::RuntimeError(
                         fancy_regex::RuntimeError::BacktrackLimitExceeded,
-                    ));
+                    )));
                 } else {
                     is_inter.store(true, std::sync::atomic::Ordering::SeqCst);
                     panic!("interrupt by signal");
@@ -232,7 +231,7 @@ impl BPETokenizer {
             let text: &str = item.extract()?;
             all_ids.extend(
                 self.encode(text)
-                    .expect(format!("cannot convert text:{}", text).as_str()),
+                    .unwrap_or_else(|_| panic!("cannot convert text:{}", text)),
             );
         }
         Ok(all_ids)
