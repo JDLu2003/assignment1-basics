@@ -2,7 +2,6 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-import einx
 
 class Linear(nn.Module):
     def __init__(
