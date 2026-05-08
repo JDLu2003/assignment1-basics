@@ -10,7 +10,6 @@ class Linear(nn.Module):
         out_features: int,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
-        weights: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
         factory_kwargs: dict[str, Any] = {'device': device, 'dtype': dtype}
@@ -72,7 +71,12 @@ class Swiglu(nn.Module):
      ├─W1─SiLU──┐
      └─W3───────⊙──W2
     """
-    def __init__(self, d_model: int, d_ff: int | None):
+    def __init__(
+            self, d_model: int, 
+            d_ff: int | None,
+            device: torch.device | None = None,
+            dtype: torch.dtype | None = None,
+        ):
         super().__init__()
 
         if d_ff == None:
@@ -81,9 +85,11 @@ class Swiglu(nn.Module):
         else:
             self.d_ff = d_ff
 
-        self.w1: Linear = Linear(self.d_ff, d_model)
-        self.w3 = Linear(self.d_ff, d_model)
-        self.w2: Linear = Linear(d_model, self.d_ff)
+        factory_kwargs: dict[str, Any] = {'device': device, 'dtype': dtype}
+
+        self.w1: Linear = Linear(self.d_ff, d_model, **factory_kwargs)
+        self.w3 = Linear(self.d_ff, d_model, **factory_kwargs)
+        self.w2: Linear = Linear(d_model, self.d_ff, **factory_kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x1: torch.Tensor = self.w1(x)

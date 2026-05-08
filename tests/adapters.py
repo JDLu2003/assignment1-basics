@@ -29,7 +29,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
     import cs336_basics.utils as utils
-    model =  utils.Linear(d_in, d_out, weights=weights)
+    model =  utils.Linear(d_in, d_out)
     model.load_state_dict({"weight": weights})
     return model.forward(in_features)
     # raise NotImplementedError
