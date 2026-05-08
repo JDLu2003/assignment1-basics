@@ -61,3 +61,41 @@ class RMSNorm(nn.Module):
         y = torch.einsum("... d, d -> ... d", x_normalized_fp32, self.weight)
         return y.to(original_dtype)
 
+class Swiglu(nn.Module):
+    """
+    传统 FFN：
+    x
+     └─W1─ReLU─W2
+
+    SwiGLU：
+    x
+     ├─W1─SiLU──┐
+     └─W3───────⊙──W2
+    """
+    def __init__(self, d_model: int, d_ff: int | None):
+        super().__init__()
+
+        if d_ff == None:
+            d_ff_cal: int = int((8.0 / 3.0) * d_model)
+            self.d_ff:int = 64 * ((d_ff_cal + 63) // 64)
+        else:
+            self.d_ff = d_ff
+
+        self.w1: Linear = Linear(self.d_ff, d_model)
+        self.w3 = Linear(self.d_ff, d_model)
+        self.w2: Linear = Linear(d_model, self.d_ff)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x1: torch.Tensor = self.w1(x)
+        # silu_out: torch.Tensor = x1 * torch.sigmoid(x1)
+        # x3: torch.Tensor = self.w3(x)
+        # hidden: torch.Tensor = silu_out * x3
+        # output: torch.Tensor = self.w2(hidden)
+        # return output
+        x1: torch.Tensor = torch.einsum('...d, fd -> ...f', x, self.w1.weight)
+        silu_out: torch.Tensor = x1 * torch.sigmoid(x1)
+        x3: torch.Tensor = torch.einsum('...d, fd -> ...f', x, self.w3.weight)
+        hidden: torch.Tensor = torch.einsum('...f, ...f -> ...f', silu_out, x3)
+        output: torch.Tensor = torch.einsum('...f, df -> ...d', hidden, self.w2.weight)
+        return output
+
